@@ -1,0 +1,143 @@
+---
+title: "Social network analysis with statnet"
+author: "Kushan De Silva"
+date: "April 30, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Analysis of a friendship network of 1,461 adolescents; a static, undirected, one-mode friendship network of 1,461 vertices.
+
+Three core packages within the statnet suite|network, sna, and ergm are used
+
+exponential-family random graph (ERG) models
+
+
+```{r}
+library("statnet")
+data("faux.magnolia.high")
+fmh <- faux.magnolia.high
+fmh
+summary(fmh)
+
+```
+
+network has 1,461 vertices and 974 edges.
+
+```{r}
+plot(fmh, displayisolates = FALSE, vertex.cex = 0.7)
+table(component.dist(fmh)$csize)
+
+```
+
+
+There are 524 isolates (which were not included in the visualization), one large component of 439 vertices, and many components in between
+
+
+
+```{r}
+#network with vertices colored by their grade
+plot(fmh, displayisolates = FALSE, vertex.col = "Grade", vertex.cex = 0.7)
+```
+
+There is a strong tendency for friendships to form within grade, but the grades themselves do not appear to be cohesive units; rather each grade seems to consist of a number of subgroups which link together
+
+```{r}
+fmh.degreedist <- table(degree(fmh, cmode = "indegree"))
+fmh.degreedist
+
+summary(fmh ~ degree(0:8))
+summary(fmh ~ degree(0:8, "Sex"))
+summary(fmh ~ triangle)
+summary(fmh ~ edges + triangle)
+```
+
+
+mixing matrix by grade (i.e., the count of relationships cross-tabulated by the grades of
+the two actors involved)
+
+```{r}
+mixingmatrix(fmh, "Grade")
+gr <- fmh %v% "Grade"
+table(gr)
+```
+
+Fitting an ERG model a.k.a. p* (p-star) model
+
+```{r}
+#Bernoulli model
+model1 <- ergm(fmh ~ edges)
+summary(model1)
+
+
+```
+
+Density of the network, that is, the fraction of possible edges that are realized, is 0.000913
+
+```{r}
+names(model1)
+model1$coef
+model1$mle.lik
+
+```
+
+
+Tendency for assortative mixing (a greater probability of individuals forming edges with others of the same race, sex, or grade as themselves; exhibits dyadic independence
+
+Test for a tendency towards assortative mixing that is uniform within each attribute class i.e. there is the same tendency for within-race edges (for example), regardless of which
+race one is talking about
+
+```{r}
+model2 <- ergm(fmh ~ edges + nodematch("Grade") + nodematch("Race") + + nodematch("Sex"))
+summary(model2)
+
+model2$mle.lik
+```
+
+```{r}
+sim2 <- simulate(model2, burnin = 1e+6, verbose = TRUE, seed = 9)
+mixingmatrix(sim2, "Race")
+mixingmatrix(fmh, "Race")
+
+plot(summary(fmh ~ degree(0:10)), type = "l", lty = 1, lwd = 2, xlab = "Degree", ylab = "Count")
+lines(summary(sim2 ~ degree(0:10)), lty = 2, lwd = 3)
+legend("topright", legend = c("Observed", "Simulated"), lwd = 3, lty = 1:2)
+c(fmh = summary(fmh ~ triangle), sim2 = summary(sim2 ~ triangle))
+
+
+```
+
+
+Identifying model degeneracy
+
+
+```{r}
+model.take1 <- ergm(fmh ~ edges + nodematch("Grade") + nodematch("Race") + nodematch("Sex") + gwesp(0, fixed = TRUE), MCMCsamplesize = 1e+5, maxit = 15, verbose = TRUE, control = control.ergm(steplength = 0.25, seed = 123))
+
+model.take1$coef
+
+model.take2 <- ergm(fmh ~ edges + nodematch("Grade") + nodematch("Race") + nodematch("Sex") + gwesp(0.1, fixed = TRUE), MCMCsamplesize = 1e+5, maxit = 15, verbose = TRUE, control = control.ergm(steplength = 0.25, seed = 123))
+
+model.take3 <- ergm(fmh ~ edges + nodematch("Grade") + nodematch("Race") + nodematch("Sex") + gwesp(0.2, fixed = TRUE), MCMCsamplesize = 1e+5, maxit = 15, verbose = TRUE, control = control.ergm(steplength = 0.25, seed = 123))
+
+c(model.take1$mle.lik, model.take2$mle.lik, model.take3$mle.lik)
+
+model4 <- model.take3
+model4$coef
+
+
+```
+
+```{r}
+gof4.deg <- gof(model4 ~ degree, verbose = TRUE, burnin = 1e+5, interval = 1e+5, control.gof.formula (seed = 246))
+
+plot(gof4.deg)
+gof4.deg
+
+
+```
+
+
